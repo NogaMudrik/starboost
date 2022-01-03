@@ -114,7 +114,15 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
         self.columns_ = []
         self.eval_scores_ = [] if eval_set else None
 
+        # If col_sampling is lower than 1 then we only use a subset of the features
+        cols = None
+        if self.col_sampling < 1:
+            n_cols = int(X.shape[1] * self.col_sampling)
+            cols = self._rng.choice(X.shape[1], n_cols, replace=False)
         # Use init_estimator for the first fit
+        if cols is None:
+             self.init_estimator_.fit(X,y)
+         else:
         self.init_estimator_.fit(X, y)
         y_pred = self.init_estimator_.predict(X)
 
@@ -155,11 +163,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                 n_rows = int(X.shape[0] * self.row_sampling)
                 rows = self._rng.choice(X.shape[0], n_rows, replace=False)
 
-            # If col_sampling is lower than 1 then we only use a subset of the features
-            cols = None
-            if self.col_sampling < 1:
-                n_cols = int(X.shape[1] * self.col_sampling)
-                cols = self._rng.choice(X.shape[1], n_cols, replace=False)
+
 
             # Subset X
             X_fit = X
@@ -173,33 +177,40 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                 gradients = loss.gradient(y, self._transform_y_pred(y_pred))
             else:
                 min_drop = np.min(index_drop)
-                if min_drop > 0:
-                    store_est = self.DART_params['estimators'][:min_drop, :min_drop]
+                if min_drop > 0 and esti_num > 0:
+                    store_est = self.DART_params['estimators'][:esti_num, :esti_num]
+                    store_est[:, trees_drop] = 1 - store_est[:, trees_drop] 
                     store_est[np.isnan(store_est)] = 0
                     for row_num, row_est in enumerate(store_est):
                         if (row_est==0).any():
                             lower_0 = np.where(row_est == 0 )[0][0]
                             row_est[lower_0:] = 0
                             store_est[row_num] = row_est
-                        sum_cons = store_est.sum(1)
-                        argmax_sum = np.argmax(sum_cons)
-                        num_trees = sum_cons[argmax_sum]
-                        former_preds = self.DART_params['preds'][argmax_sum]
-                        for 
-                            
-                    
-                    
-                    
-                    
-                    
-
-                            
-                            
-                            
+                
                         
-                        
-                    if np.i
-                        
+                    sum_cons = store_est.sum(1)
+                    argmax_sum = np.argmax(sum_cons)
+                    num_trees = sum_cons[argmax_sum]
+                    y_preds_some = self.DART_params['preds'][argmax_sum]
+                    # loop for prediction until the added estimator (not including the last one)
+                else:
+                    y_preds_some = np.zeros(y.shape)
+                    argmax_sum = 0
+                if esti_num > 0 :
+                    # run over the trees found so far
+                    for comp_tree in range(argmax_sum , esti_num):
+                        if comp_tree not in index_drop:
+                            for  i in range(y_preds_some.shape[1]):
+                                # Estimate the descent direction using the weak learner
+                                former_estimator = self.estimators_[comp_tree,i]
+                                direction = former_estimator.predict(X if cols is None else X[:, cols])
+                                #gradients = loss.gradient(y, self._transform_y_pred(y_pred))
+                                y_preds_some[:, i] += self.learning_rate * direction
+                else:
+                    y_pred = self.init_estimator_.predict(X if cols is None else X[:, cols])
+                    gradients = loss.gradient(y, self._transform_y_pred(y_preds_some))
+                                    
+                                
 
             # We will train one weak model per column in y
             estimators = []
