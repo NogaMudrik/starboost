@@ -122,9 +122,9 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
         # Use init_estimator for the first fit
         if cols is None:
              self.init_estimator_.fit(X,y)
-         else:
-        self.init_estimator_.fit(X, y)
-        y_pred = self.init_estimator_.predict(X)
+        else:
+            self.init_estimator_.fit(X[:,cols], y)
+        y_pred = self.init_estimator_.predict((X if cols is None else X[:, cols]))
 
         # We keep training weak learners until we reach n_estimators or early stopping occurs
         for esti_num in range(self.n_estimators):
