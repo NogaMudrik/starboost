@@ -23,7 +23,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
     def __init__(self, loss=None, base_estimator=None, base_estimator_is_tree=False,
                  n_estimators=30, init_estimator=None, line_searcher=None, learning_rate=0.1,
                  row_sampling=1.0, col_sampling=1.0, eval_metric=None, early_stopping_rounds=None,
-                 random_state=None):
+                 random_state=None, is_DART = False, DART_params = {}):
         self.loss = loss
         self.base_estimator = base_estimator
         self.base_estimator_is_tree = base_estimator_is_tree
@@ -36,7 +36,24 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
         self.eval_metric = eval_metric
         self.early_stopping_rounds = early_stopping_rounds
         self.random_state = random_state
-
+        self.is_DART = is_DART
+        # dist_drop: can be random or by contribution (inverse)
+        default_DART = {'n_drop':1, 'dist_drop': 'random' }
+        additional_keys = {key:val for key,val in default_DART.items() if key not in DART_params.keys()}
+        DART_params = {**DART_params, **additional_keys}
+        self.DART_params = DART_params
+        if self.is_DART:
+            # drop data dictionary.
+            # keys = iteration #; values = dropout trees 
+            self.drop_data = {}
+            # addition data - information about the tree added in each iteration.
+            # keys = iteration #; values = the tree added  
+            self.add_data = {}
+            # store trees id and results .
+            # inter_results[0] - a binary matrix of trees used; 
+            # inter_results[1] 
+            self.inter_results = {'estimators': np.array([]), 'gradients': np.array([]), 'preds':np.array([])}
+            
     @abc.abstractmethod
     def _transform_y_pred(self, y_pred):
         pass
@@ -143,6 +160,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
 
                 # Move the predictions along the estimated descent direction
                 y_pred[:, i] += self.learning_rate * direction
+                if self.is_DART: # if is_DARt -> update y_pred after droupout
 
             # Store the estimator and the step
             self.estimators_.append(estimators)
@@ -393,3 +411,7 @@ class BoostingClassifier(BaseBoosting, base.ClassifierMixin):
             array of shape (n_samples, n_classes) containing the predicted probabilities.
         """
         return collections.deque(self.iter_predict_proba(X), maxlen=1).pop()
+"""
+
+
+"""
