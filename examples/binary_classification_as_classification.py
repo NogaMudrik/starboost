@@ -19,11 +19,11 @@ def micro_f1_score(y_true, y_pred):
 
 model = starboost_up.boosting.BoostingClassifier(
     loss=starboost_up.losses.LogLoss(),
-    base_estimator= xgb.XGBRegressor(max_depth = 3),
+    base_estimator= xgb.XGBRegressor(max_depth = 1),
     #tree.DecisionTreeRegressor(max_depth=3),
     # #
         base_estimator_is_tree=True,
-        n_estimators=30,
+        n_estimators=100,
         init_estimator=starboost_up.init.LogOddsEstimator(), #PriorProbabilityEstimator(),
         learning_rate=0.1,
         row_sampling=0.8,

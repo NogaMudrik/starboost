@@ -84,7 +84,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
         Returns:
             self
         """
-        self.inter_results = {'estimators': {},'estimators_dropped': {}, 'gradients': {}, 'preds':{},'mutiply_factor' : np.ones((self.n_estimators, y.shape[1]))}
+        self.inter_results = {'trees_drop' : np.zeros((self.n_estimators,self.n_estimators)), 'estimators': {},'estimators_dropped': {}, 'gradients': {}, 'preds':{},'mutiply_factor' : np.ones((self.n_estimators, y.shape[1]))}
         # Verify the input parameters
         base_estimator = self.base_estimator
         base_estimator_is_tree = self.base_estimator_is_tree
@@ -145,8 +145,9 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                         abs_drop = int(floor(len(self.estimators_)*self.DART_params['n_drop']))
                     else:
                         abs_drop = np.min([self.DART_params['n_drop'], len(self.estimators_)])
-                    index_drop = np.random.choice(len(self.estimators_), abs_drop)
-                    trees_drop = np.zeros((1,esti_num))
+                    index_drop = np.random.choice(esti_num, abs_drop)
+                    trees_drop = np.zeros(esti_num)
+
                     trees_drop[index_drop] = 1
                 elif self.DART_params['dist_drop'] == 'weights':
                     w_list = self.DART_params['weights_list']
@@ -163,10 +164,9 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                         index_drop = np.where(trees_drop)[0]  
                     trees_drop = 1*trees_drop                                  
                 else:   raise NameError('Unknown dropping type')
-                
+                self.inter_results['trees_drop' ][esti_num, :esti_num] = trees_drop
                 if len(index_drop) > 0 :
-                    display(index_drop)
-                    display(self.estimators_)
+
                     array_estimators = np.array(self.estimators_)
                     self.drop_data[esti_num] = np.array([index_drop])
                 else: 
@@ -199,10 +199,11 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
             else:
                 # min_drop = np.min(index_drop)
                 if esti_num > 0:
-                    y_preds_some = np.zeros(y.shape)
+                    y_preds_some = y_pred
                     for esti_num, former_fitted_esti in enumerate(self.estimators_):
                         if esti_num not in trees_drop:
                             for i in range(y.shape[1]):
+                                former_fitted_esti_i = former_fitted_esti[i]
                                 direction = former_fitted_esti_i.predict(X if cols is None else X[:, cols])
                                 multi_factor = self.inter_results['mutiply_factor'][esti_num,i]
                                 y_preds_some[:, i] += self.learning_rate * direction * multi_factor
@@ -278,13 +279,16 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
             Store the last estimator in memory
             """
             if self.is_DART:
+                #display(estimators[0].get_booster().get_dump())
+                #gfgf
                 self.inter_results['estimators'][esti_num] = [model.get_booster().get_dump() for model in estimators]
                 self.inter_results['preds'][esti_num] = y_pred
                 self.inter_results['gradients'][esti_num] = gradients
                 self.add_data[esti_num] = estimators
-                display(index_drop)
+
                 if len(index_drop)>0:
-                    self.inter_results['estimators_dropped'][esti_num] = [[model.get_booster().get_dump() for model in estimators_spec] for estimators_spec in self.estimators_[index_drop]]
+
+                    self.inter_results['estimators_dropped'][esti_num] = [[model.get_booster().get_dump() for model in estimators_spec] for estimators_spec in np.array(self.estimators_)[index_drop]]
                 else:
                     self.inter_results['estimators_dropped'][esti_num] = []
         
