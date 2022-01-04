@@ -19,7 +19,8 @@ def micro_f1_score(y_true, y_pred):
 
 model = starboost_up.boosting.BoostingClassifier(
     loss=starboost_up.losses.LogLoss(),
-    base_estimator=tree.DecisionTreeRegressor(max_depth=3),
+    base_estimator= xgb.XGBRegressor(max_depth = 3),
+    #tree.DecisionTreeRegressor(max_depth=3),
     # #
         base_estimator_is_tree=True,
         n_estimators=30,
@@ -29,7 +30,9 @@ model = starboost_up.boosting.BoostingClassifier(
         col_sampling=0.8,
         eval_metric=micro_f1_score,
         early_stopping_rounds=5,
-        random_state=42
+        random_state=42,
+        type_class ='classification',
+        is_DART = True,
 )
 #
 model = model.fit(X_fit, y_fit, eval_set=(X_val, y_val))
