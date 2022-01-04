@@ -38,3 +38,9 @@ class PriorProbabilityEstimator(SimpleEstimator):
 
     def make_estimate(self, y):
         return np.sum(y, axis=0) / len(y)
+    
+    
+class LogOddsEstimator(SimpleEstimator):
+
+    def make_estimate(self, y):
+        return np.log(y.mean(0)/(1-y.mean(0)))

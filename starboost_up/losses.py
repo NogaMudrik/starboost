@@ -1,7 +1,7 @@
 import abc
-
+import os 
 import numpy as np
-
+print(os.path.dirname(os.path.realpath(__file__)))
 from . import init
 from . import line_searchers
 
@@ -163,7 +163,7 @@ class LogLoss(Loss):
         Example:
             >>> import starboost as sb
             >>> y_true = [0, 0, 1]
-            >>> y_pred = [0.5, 0.5, 0.5]
+            >>> y_pred_proba = [0.5, 0.5, 0.5]
             >>> sb.losses.LogLoss()(y_true, y_pred)
             0.807410...
         """

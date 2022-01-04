@@ -11,10 +11,11 @@ from sklearn import preprocessing
 from sklearn import tree
 from sklearn import utils
 
-from . import losses
+#from . 
+from starboost import losses
 
 
-__all__ = ['BoostingClassifier', 'BoostingRegressor']
+#__all__ = ['BoostingClassifier', 'BoostingRegressor','BaseBoosting']
 
 
 class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
@@ -23,7 +24,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
     def __init__(self, loss=None, base_estimator=None, base_estimator_is_tree=False,
                  n_estimators=30, init_estimator=None, line_searcher=None, learning_rate=0.1,
                  row_sampling=1.0, col_sampling=1.0, eval_metric=None, early_stopping_rounds=None,
-                 random_state=None, is_DART = False, DART_params = {}):
+                 random_state=None, is_DART = False, DART_params = {}, type_class = 'regression'):
         self.loss = loss
         self.base_estimator = base_estimator
         self.base_estimator_is_tree = base_estimator_is_tree
@@ -37,6 +38,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
         self.early_stopping_rounds = early_stopping_rounds
         self.random_state = random_state
         self.is_DART = is_DART
+        self.type_class = type_class
         # dist_drop: can be random or by weights (inverse).
         # min_1: whether to drpo out at least one estimator
         default_DART = {'n_drop':1, 'dist_drop': 'random' , 'min_1':True, 'weights_list' : None}
@@ -88,9 +90,11 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
             base_estimator = tree.DecisionTreeRegressor(max_depth=1, random_state=self.random_state)
             base_estimator_is_tree = True
 
-        if not isinstance(base_estimator, base.RegressorMixin):
+        if not isinstance(base_estimator, base.RegressorMixin) and not isinstance(base_estimator, base.ClassifierMixin) :
             raise ValueError('base_estimator must be a RegressorMixin')
 
+            
+            
         loss = self.loss or self._default_loss
 
         self.init_estimator_ = base.clone(self.init_estimator or loss.default_init_estimator)
@@ -123,7 +127,10 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
              self.init_estimator_.fit(X,y)
         else:
             self.init_estimator_.fit(X[:,cols], y)
-        y_pred = self.init_estimator_.predict((X if cols is None else X[:, cols]))
+        if self.type_class == 'regression':
+            y_pred = self.init_estimator_.predict((X if cols is None else X[:, cols]))
+        else:
+            y_pred = self.init_estimator_.predict_proba((X if cols is None else X[:, cols]))
 
         # We keep training weak learners until we reach n_estimators or early stopping occurs
         for esti_num in range(self.n_estimators):
@@ -175,7 +182,8 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                 X_fit = X_fit[rows, :]
             if cols is not None:
                 X_fit = X_fit[:, cols]
-
+            
+ 
             if not self.is_DART:
                 # Compute the gradients of the loss for the current prediction
                 gradients = loss.gradient(y, self._transform_y_pred(y_pred))
@@ -188,7 +196,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                             for i in former_fitted_esti_i:
                                 direction = former_fitted_esti_i.predict(X if cols is None else X[:, cols])
                                 multi_factor = self.inter_results['mutiply_factor'][esti_num,i]
-                                y_preds_some[:, i] += self.learning_rate * direction * multi_factor
+                                y_preds_some[:, i] += self.learning_rate * direction[:,i] * multi_factor
                         else:
                             for i in former_fitted_esti_i:
                                 self.inter_results['mutiply_factor'][esti_num,i]*=factor_return
@@ -232,6 +240,8 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
 
                 # Fit a weak learner to the negative gradient of the loss function
                 estimator = base.clone(base_estimator)
+                #display(np.unique(y))
+                #display(np.unique(gradient))
                 estimator = estimator.fit(X_fit, -gradient if rows is None else -gradient[rows])
                 estimators.append(estimator)
 
@@ -247,6 +257,8 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
 
                 # Move the predictions along the estimated descent direction
                 #if not self.is_DART: # if is_DARt -> update y_pred after droupout
+                #display(direction.shape)
+                #display(y_pred.shape)
                 y_pred[:, i] += self.learning_rate * direction * factor_drop
                 #else:
                 #    set_take = self.inter_results['estimators']
@@ -264,7 +276,12 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
             if not eval_set:
                 continue
             X_val, y_val = eval_set
-            self.eval_scores_.append(eval_metric(y_val, self.predict(X_val)))
+            #display(np.unique(y_val))
+            #display(np.unique(self.predict(X_val)))
+            if len(np.unique(y_val)) > 2:
+                self.eval_scores_.append(eval_metric(y_val, self.predict(X_val)))
+            else:
+                self.eval_scores_.append(eval_metric(y_val, np.round(self.predict(X_val)).astype(int)))
 
             # Check for early stopping
             if self.early_stopping_rounds and len(self.eval_scores_) > self.early_stopping_rounds:
@@ -282,7 +299,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                 self.inter_results['estimators_dropped'][esti_num] = [[model.get_booster().get_dump() for model in estimators_spec] for estimators_spec in self.estimarors_[index_drop]]
         
         return self
-model.get_booster().get_dump()
+    #model.get_booster().get_dump()
     def iter_predict(self, X, include_init=False):
         """Returns the predictions for ``X`` at every stage of the boosting procedure.
 
@@ -337,7 +354,14 @@ model.get_booster().get_dump()
         Returns:
             array of shape (n_samples,) containing the predicted values.
         """
-        return collections.deque(self.iter_predict(X), maxlen=1).pop()
+        if self.type_class == 'classification':
+            c = collections.deque(self.iter_predict(X), maxlen=1).pop()
+            return np.round(np.exp(c)/(1+np.exp(c)))
+        elif self.type_class == 'regression':
+            return collections.deque(self.iter_predict(X), maxlen=1).pop()
+        else:
+            raise NameError('Unknown estimator type')
+        
 
 
 class BoostingRegressor(BaseBoosting, base.RegressorMixin):
