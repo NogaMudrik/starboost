@@ -135,10 +135,11 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
         #    y_pred = self.init_estimator_.predict_proba((X if cols is None else X[:, cols]))
 
         # We keep training weak learners until we reach n_estimators or early stopping occurs
+        #print(self.n_estimators)
         for esti_num in range(self.n_estimators):
             np.random.seed(esti_num)
             # Create an empty list to store drop-out information
-            
+            #print(esti_num)
             if self.is_DART:
                 if self.DART_params['dist_drop'] == 'random':
                     if self.DART_params['n_drop'] < 1:
@@ -170,6 +171,8 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                     array_estimators = np.array(self.estimators_)
                     self.drop_data[esti_num] = np.array([index_drop])
                 else: 
+                    #print(index_drop)
+                    #print(esti_num)
                     self.drop_data[esti_num] = []
                 # Record the trees used in the .DART_params['estimators']  matrix
                 
@@ -314,9 +317,9 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
         if include_init:
             yield y_pred
 
-        for estimators, line_searchers, cols in itertools.zip_longest(self.estimators_,
+        for esti_num, (estimators, line_searchers, cols) in enumerate(itertools.zip_longest(self.estimators_,
                                                                       self.line_searchers_,
-                                                                      self.columns_):
+                                                                      self.columns_)):
 
             for i, (estimator, line_searcher) in enumerate(itertools.zip_longest(estimators,
                                                                                  line_searchers or [])):
@@ -330,8 +333,12 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
 
                 if line_searcher:
                     direction = line_searcher.update(direction)
+                if cols is None:
+                    y_pred[:, i] += self.learning_rate * direction * self.inter_results['mutiply_factor'][esti_num,0]
+                else:
+                    y_pred[:, i] += self.learning_rate * direction * self.inter_results['mutiply_factor'][esti_num, i]
 
-                y_pred[:, i] += self.learning_rate * direction
+                
 
             yield y_pred
 

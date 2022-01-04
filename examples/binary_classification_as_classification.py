@@ -23,16 +23,17 @@ model = starboost_up.boosting.BoostingClassifier(
     #tree.DecisionTreeRegressor(max_depth=3),
     # #
         base_estimator_is_tree=True,
-        n_estimators=100,
+        n_estimators=50,
         init_estimator=starboost_up.init.LogOddsEstimator(), #PriorProbabilityEstimator(),
         learning_rate=0.1,
         row_sampling=0.8,
         col_sampling=0.8,
         eval_metric=micro_f1_score,
-        early_stopping_rounds=5,
+        early_stopping_rounds=False,
         random_state=42,
         type_class ='classification',
         is_DART = True,
+         DART_params = {'n_drop':1, 'dist_drop': 'random' , 'min_1':True, 'weights_list' : None},
 )
 #
 model = model.fit(X_fit, y_fit, eval_set=(X_val, y_val))
