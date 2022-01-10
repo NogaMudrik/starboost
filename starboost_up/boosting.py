@@ -10,14 +10,14 @@ from sklearn import ensemble
 from sklearn import preprocessing
 from sklearn import tree
 from sklearn import utils
-
+import xgboost as xgb
 #from . 
 from starboost import losses
 
 
 #__all__ = ['BoostingClassifier', 'BoostingRegressor','BaseBoosting']
 
-
+#%%
 class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
     """Implements logic common to all other boosting classes."""
 
@@ -34,6 +34,8 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
         self.learning_rate = learning_rate
         self.row_sampling = row_sampling
         self.col_sampling = col_sampling
+        print('col_Sampling')
+        print(col_sampling)
         self.eval_metric = eval_metric
         self.early_stopping_rounds = early_stopping_rounds
         self.random_state = random_state
@@ -84,6 +86,8 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
         Returns:
             self
         """
+        if len(y.shape) == 1:
+            y = y.reshape((-1,1))
         self.inter_results = {'trees_drop' : np.zeros((self.n_estimators,self.n_estimators)), 'estimators': {},'estimators_dropped': {}, 'gradients': {}, 'preds':{},'mutiply_factor' : np.ones((self.n_estimators, y.shape[1]))}
         # Verify the input parameters
         base_estimator = self.base_estimator
@@ -125,6 +129,9 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
             n_cols = int(X.shape[1] * self.col_sampling)
             cols = self._rng.choice(X.shape[1], n_cols, replace=False)
         # Use init_estimator for the first fit
+        
+        print('init_est')
+        print(X.shape)
         if cols is None:
              self.init_estimator_.fit(X,y)
         else:
@@ -143,7 +150,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
             if self.is_DART:
                 if self.DART_params['dist_drop'] == 'random':
                     if self.DART_params['n_drop'] < 1:
-                        abs_drop = int(floor(len(self.estimators_)*self.DART_params['n_drop']))
+                        abs_drop = int(np.floor(len(self.estimators_)*self.DART_params['n_drop']))
                     else:
                         abs_drop = np.min([self.DART_params['n_drop'], len(self.estimators_)])
                     index_drop = np.random.choice(esti_num, abs_drop)
@@ -190,12 +197,17 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
 
             # Subset X
             X_fit = X
+            print('X_fit')
+            print(X_fit.shape)
+            print(rows)
+            print(cols)
             if rows is not None:
                 X_fit = X_fit[rows, :]
             if cols is not None:
                 X_fit = X_fit[:, cols]
             
- 
+            print('X_fit2')
+            print(X_fit.shape)
             if not self.is_DART:
                 # Compute the gradients of the loss for the current prediction
                 gradients = loss.gradient(y, self._transform_y_pred(y_pred))
@@ -216,6 +228,8 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                     #                                y_preds_some[:, i] += self.learning_rate * direction
                     y_pred = y_preds_some
                 #y_pred = self.init_estimator_.predict(X if cols is None else X[:, cols])
+                print('y')
+                print(y.shape)
                 gradients = loss.gradient(y, self._transform_y_pred(y_pred))
                                     
                                 
@@ -232,6 +246,9 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                 estimator = base.clone(base_estimator)
                 #display(np.unique(y))
                 #display(np.unique(gradient))
+                print('gradients')
+                print(X_fit.shape)
+                print(gradient.shape)
                 estimator = estimator.fit(X_fit, -gradient if rows is None else -gradient[rows])
                 estimators.append(estimator)
 
@@ -245,15 +262,8 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                     line_searchers.append(ls)
                     direction = ls.update(direction)
 
-                # Move the predictions along the estimated descent direction
-                #if not self.is_DART: # if is_DARt -> update y_pred after droupout
-                #display(direction.shape)
-                #display(y_pred.shape)
                 y_pred[:, i] += self.learning_rate * direction * factor_drop
-                #else:
-                #    set_take = self.inter_results['estimators']
-                #    y_pred_prev = self.inter_results['preds'][:,i]
-                    
+
                 
 
             # Store the estimator and the step
@@ -296,7 +306,10 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                     self.inter_results['estimators_dropped'][esti_num] = []
         
         return self
-    #model.get_booster().get_dump()
+    
+    
+    
+    
     def iter_predict(self, X, include_init=False):
         """Returns the predictions for ``X`` at every stage of the boosting procedure.
 
@@ -310,7 +323,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
         """
         utils.validation.check_is_fitted(self, 'init_estimator_')
         X = utils.check_array(X, accept_sparse=['csr', 'csc'], dtype=None, force_all_finite=False)
-
+        print(X.shape)
         y_pred = self.init_estimator_.predict(X)
 
         # The user decides if the initial prediction should be included or not
@@ -364,7 +377,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
             raise NameError('Unknown estimator type')
         
 
-
+#%%
 class BoostingRegressor(BaseBoosting, base.RegressorMixin):
     """Gradient boosting for regression.
 
@@ -413,16 +426,20 @@ class BoostingRegressor(BaseBoosting, base.RegressorMixin):
         return super().fit(X=X, y=y, eval_set=eval_set)
 
     def iter_predict(self, X, include_init=False):
+        print('iter predict regressor')
+        print(X.shape)
         for y_pred in super().iter_predict(X, include_init=include_init):
             yield y_pred[:, 0]
 
 
+#%% 
 def softmax(x):
     """Can be replaced once scipy 1.3 is released, although numeric stability should be checked."""
     e_x = np.exp(x - np.max(x))
     return e_x / e_x.sum(axis=1)[:, None]
 
 
+#%%
 class BoostingClassifier(BaseBoosting, base.ClassifierMixin):
     """Gradient boosting for regression.
 
