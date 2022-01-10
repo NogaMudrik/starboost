@@ -232,16 +232,18 @@ def make_file(array_to_save, path='',file_name ='', to_rewrite= False, type_file
     to_rewrite - If file already exist -> whether to rewrite it. 
     type_file = '.npy' or 'jpg' or 'png'
     """
-    if not type_file.startswith(.): type_file = '.' + type_file
+    if not type_file.startswith('.'): type_file = '.' + type_file
     if not file_name.endswith(type_file): file_name = file_name +type_file
     my_file = Path('%s\%s'%(path,file_name))
-    if not my_file.is_file() or to_rewrite:        
-        if type_file == '.npy':
-            np.save(my_file, array_to_save)
-        elif type_file == '.png' or type_file == '.jpg':
-            print('Fig. saved')
-            array_to_save.savefig(my_file, dpi=300)  
-            
+    if not my_file.is_file() or to_rewrite: 
+        if len(array_to_save) > 0:
+            if type_file == '.npy':
+                np.save(my_file, array_to_save)
+            elif type_file == '.png' or type_file == '.jpg':
+                print('Fig. saved')
+                array_to_save.savefig(my_file, dpi=300)  
+        else:
+            plt.savefig(my_file)
             
             
 #%% 

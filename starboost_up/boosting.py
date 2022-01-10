@@ -34,8 +34,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
         self.learning_rate = learning_rate
         self.row_sampling = row_sampling
         self.col_sampling = col_sampling
-        print('col_Sampling')
-        print(col_sampling)
+
         self.eval_metric = eval_metric
         self.early_stopping_rounds = early_stopping_rounds
         self.random_state = random_state
@@ -130,8 +129,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
             cols = self._rng.choice(X.shape[1], n_cols, replace=False)
         # Use init_estimator for the first fit
         
-        print('init_est')
-        print(X.shape)
+
         if cols is None:
              self.init_estimator_.fit(X,y)
         else:
@@ -197,17 +195,13 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
 
             # Subset X
             X_fit = X
-            print('X_fit')
-            print(X_fit.shape)
-            print(rows)
-            print(cols)
+
             if rows is not None:
                 X_fit = X_fit[rows, :]
             if cols is not None:
                 X_fit = X_fit[:, cols]
             
-            print('X_fit2')
-            print(X_fit.shape)
+
             if not self.is_DART:
                 # Compute the gradients of the loss for the current prediction
                 gradients = loss.gradient(y, self._transform_y_pred(y_pred))
@@ -228,8 +222,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                     #                                y_preds_some[:, i] += self.learning_rate * direction
                     y_pred = y_preds_some
                 #y_pred = self.init_estimator_.predict(X if cols is None else X[:, cols])
-                print('y')
-                print(y.shape)
+
                 gradients = loss.gradient(y, self._transform_y_pred(y_pred))
                                     
                                 
@@ -246,9 +239,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                 estimator = base.clone(base_estimator)
                 #display(np.unique(y))
                 #display(np.unique(gradient))
-                print('gradients')
-                print(X_fit.shape)
-                print(gradient.shape)
+
                 estimator = estimator.fit(X_fit, -gradient if rows is None else -gradient[rows])
                 estimators.append(estimator)
 
@@ -323,7 +314,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
         """
         utils.validation.check_is_fitted(self, 'init_estimator_')
         X = utils.check_array(X, accept_sparse=['csr', 'csc'], dtype=None, force_all_finite=False)
-        print(X.shape)
+
         y_pred = self.init_estimator_.predict(X)
 
         # The user decides if the initial prediction should be included or not
@@ -426,8 +417,7 @@ class BoostingRegressor(BaseBoosting, base.RegressorMixin):
         return super().fit(X=X, y=y, eval_set=eval_set)
 
     def iter_predict(self, X, include_init=False):
-        print('iter predict regressor')
-        print(X.shape)
+
         for y_pred in super().iter_predict(X, include_init=include_init):
             yield y_pred[:, 0]
 

@@ -22,6 +22,7 @@ import starboost_up
 path_data = r'E:\datasetsDART'
 from pathlib import Path
 import pickle
+import matplotlib.pyplot as plt
 #%% Create data
 
 
@@ -79,6 +80,8 @@ if data_type == 'def':
     X,y, problem_type = load_data( 'breast_cancer', True , path_data)
 elif data_type == 'CT':
     X,y, problem_type, split_id = load_data(data_type, True , path_data)
+elif data_type == 'former'    :
+    pass
 else:
     X,y, problem_type = load_data(data_type, True , path_data)
 #X, y = datasets.load_breast_cancer(return_X_y=True)    
@@ -98,16 +101,21 @@ def rmse(y_true, y_pred):
     """
     return metrics.mean_squared_error(y_true, y_pred) ** 0.5
 
-def create_inner_path(list_path):
+def create_inner_path(list_path, add_args = []):
+    
     if isinstance(list_path, list):
         real_path = ''
-        for el in list_path:
-            real_path = real_path + '/' + str(el)
+        for el_num, el in enumerate(list_path):
+            if len(add_args) > el_num:
+                real_path = real_path + '\%s_%s'%(str(add_args[el_num]), str(el))
+            else:
+                real_path = real_path + '\%s'%str(el)
+            
     else:
         real_path = list_path
-    Path(real_path).mkdir(parents=True, exist_ok=True)
-    return real_path
-
+    whole_path = os.getcwd() +'\save_files\%s'%real_path
+    Path(whole_path).mkdir(parents=True, exist_ok=True)
+    return real_path, whole_path
 
 def split_train_test_val(X,y, test_ratio = 0.2, val_ratio = 0, split_id = None, rand_seed = 0):
     """
@@ -172,8 +180,8 @@ def run_model(X_fit, y_fit, X_val, y_val, type_model = 'classification', max_dep
 
     elif type_model == 'regression':        
         model = starboost_up.boosting.BoostingRegressor(
-            loss=sb.losses.L2Loss(),
-            base_estimator=tree.DecisionTreeRegressor(max_depth= max_depth),
+            loss=starboost_up.losses.L2Loss(),
+            base_estimator= xgb.XGBRegressor(max_depth = 1),
             base_estimator_is_tree=True,
             n_estimators=n_estimators,         init_estimator=linear_model.LinearRegression(),
             learning_rate=  learning_rate,            row_sampling=0.8,
@@ -198,7 +206,7 @@ def run_model(X_fit, y_fit, X_val, y_val, type_model = 'classification', max_dep
 
 
 def run_model_x_y(X, y , test_ratio = 0.2, split_id = None, type_model = 'classification', max_depth = 1, n_estimators = 50,  
-              learning_rate = 0.1, early_stopping_rounds = False, col_sampling = 0.8,
+              learning_rate = 0.1, early_stopping_rounds = False, col_sampling = 1,
                 is_DART = True, DART_params = {'n_drop':1, 'dist_drop': 'random' , 'min_1':True, 'weights_list' : None}, limit_type = False):
 
     if split_id:
@@ -217,16 +225,23 @@ def run_model_x_y(X, y , test_ratio = 0.2, split_id = None, type_model = 'classi
 #%%
 isdart = bool(input('is dart?')    )
 ndrop = float(input('ndrop'))
+to_update_dict = True
+to_plot = True
+if isdart:
+    color_plot = np.random.rand(3)
+else:
+    color_plot = 'black'
 
-params = {'isdart':isdart, 'n_estimators':150, 'ndrop': ndrop,'min_1' : False, 'limit_type' : False }
+params = {'isdart':isdart, 'n_estimators':50, 'ndrop': ndrop,'min_1' : False, 'limit_type' : False }
 
 if ndrop == 1: ndrop = int(ndrop)
 X_fit, X_val, y_fit, y_val, model, y_pred, eva, evas, inter_predictions = run_model_x_y(X, y,
-                                                                                        is_DART =isdart , n_estimators= n_estimators, 
-                                                                                        DART_params = {'n_drop':ndrop,'min_1':params['min_1']})
+                                                                                        is_DART =isdart , n_estimators= params['n_estimators'], 
+                                                                                        DART_params = {'n_drop':ndrop,'min_1':params['min_1']},
+                                                                                        type_model = problem_type)
 
 
-real_path = create_inner_path([params['isdart'], params['n_estimators'], params['ndrop'], params['min_1'],params['limit_type']], 
+real_path, whole_path = create_inner_path([params['isdart'], params['n_estimators'], params['ndrop'], params['min_1'],params['limit_type']], 
                   ['isdart', 'n_estimators', 'ndrop', 'min_1','limit_type'])
 
 
@@ -255,6 +270,44 @@ def make_file(array_to_save, path='',file_name ='', to_rewrite= False, type_file
 
 
 #%% 
+def to_load_dict(name_dict):
+    file_exists = exists(name_dict)
+    if file_exists:        load_dict = np.load(name_dict, allow_pickle = True).item()
+    else: load_dict = {}
+    return load_dict
+    
+    
+#%% 
+"""
+name_save = real_path.replace('/','_')[1:];            
+if to_update_dict:
+    name_cum = 'cum_dict_%s.npy'%data_type
+    load_dict = to_load_dict(name_cum)   
+    load_dict[name_save] = evas
+    save_path = 'save_files\%s\%s'%(data_type,name_cum)
+    Path(save_path).mkdir(parents=True, exist_ok=True)
+    np.save(save_path, load_dict)
+    
+    name_cum = 'params_dict_%s.npy'%data_type
+    load_dict = to_load_dict(name_cum)   
+    load_dict[name_save] = params
+    save_path = 'save_files\%s\%s'%(data_type,name_cum)
+    Path(save_path).mkdir(parents=True, exist_ok=True)
+    np.save(save_path, load_dict)
+
+    
+if to_plot:            
+    plt.plot(pd.DataFrame(evas,index =[name_save]).T, color_plot);
+    plt.xlabel('Iterations')
+    plt.ylabel('AUC score')
+    make_file([], whole_path, 'performance_graph.png',True, '.png')
+
+ 
+# Save the trained model as a pickle string.
+pickle.dump(model, open(whole_path+'/model.sav' , 'wb'))
+
+"""
+
 name_save = real_path.replace('/','_')[1:];            
 if to_update_dict:
     name_cum = 'cum_dict_%s.npy'%data_type
@@ -274,7 +327,7 @@ if to_update_dict:
 
     
 if to_plot:            
-    plt.plot(pd.DataFrame(evas,index =[name_save]).T, color_plot);
+    plt.plot(pd.DataFrame(evas,index =[name_save]).T, color = color_plot);
     plt.xlabel('Iterations')
     plt.ylabel('AUC score')
     make_file([], whole_path, 'performance_graph.png',True, '.png')
