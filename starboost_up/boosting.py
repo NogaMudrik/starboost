@@ -12,6 +12,7 @@ from sklearn import tree
 from sklearn import utils
 import xgboost as xgb
 #from . 
+import pandas as pd
 from starboost import losses
 
 
@@ -50,6 +51,9 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
         if DART_params['dist_drop'] == 'weights'  and not DART_params['weights_list'] :
             DART_params['dist_drop'] = 'random'
         self.DART_params = DART_params
+        if self.DART_params['n_drop'] == 1:
+            self.replace_df = pd.DataFrame(columns = ['Added','Removed'])
+            
         if self.is_DART:
             # drop data dictionary.
             # keys = iteration #; values = dropout trees 
@@ -87,7 +91,12 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
         """
         if len(y.shape) == 1:
             y = y.reshape((-1,1))
-        self.inter_results = {'trees_drop' : np.zeros((self.n_estimators,self.n_estimators)), 'estimators': {},'estimators_dropped': {}, 'gradients': {}, 'preds':{},'mutiply_factor' : np.ones((self.n_estimators, y.shape[1]))}
+        self.inter_results = {'trees_drop' : np.zeros((self.n_estimators,self.n_estimators)), 'estimators': {},
+                              'estimators_dropped': {}, 'gradients': {},
+                              'preds':{},
+                              'mutiply_factor' : np.ones((0, y.shape[1]))}
+        if not self.is_DART:
+            self.inter_results['mutiply_factor'] = np.ones((self.n_estimators, y.shape[1]))
         # Verify the input parameters
         base_estimator = self.base_estimator
         base_estimator_is_tree = self.base_estimator_is_tree
@@ -136,6 +145,8 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
             self.init_estimator_.fit(X[:,cols], y)
         #if self.type_class == 'regression':
         y_pred = self.init_estimator_.predict((X if cols is None else X[:, cols]))
+        #if self.DART_params['n_drop'] == 1:
+        #    self.replace_df.iloc[0,:] = [[0,]]
         #else:
         #    y_pred = self.init_estimator_.predict_proba((X if cols is None else X[:, cols]))
 
@@ -151,7 +162,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                         abs_drop = int(np.floor(len(self.estimators_)*self.DART_params['n_drop']))
                     else:
                         abs_drop = np.min([self.DART_params['n_drop'], len(self.estimators_)])
-                    index_drop = np.random.choice(esti_num, abs_drop)
+                    index_drop = np.random.choice(esti_num, abs_drop, replace =  False)
                     trees_drop = np.zeros(esti_num)
 
                     trees_drop[index_drop] = 1
@@ -168,8 +179,10 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                         trees_drop[index_drop] = 1
                     else:
                         index_drop = np.where(trees_drop)[0]  
-                    trees_drop = 1*trees_drop                                  
+                    trees_drop = 1*trees_drop  
+
                 else:   raise NameError('Unknown dropping type')
+
                 self.inter_results['trees_drop' ][esti_num, :esti_num] = trees_drop
                 if len(index_drop) > 0 :
 
@@ -182,7 +195,10 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                 # Record the trees used in the .DART_params['estimators']  matrix
                 
                 factor_drop = 1/(np.sum(trees_drop)+1)
+                self.inter_results['mutiply_factor'] = np.vstack([self.inter_results['mutiply_factor'],factor_drop*np.ones((1,y.shape[1]))])
+
                 factor_return = np.sum(trees_drop)/(np.sum(trees_drop)+1)
+                #print(factor_return + factor_drop)
             else:
                 
                 factor_drop = 1
@@ -209,15 +225,25 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                 # min_drop = np.min(index_drop)
                 if esti_num > 0:
                     y_preds_some = y_pred
-                    for esti_num, former_fitted_esti in enumerate(self.estimators_):
-                        if esti_num not in trees_drop:
+                    for esti_num_small, former_fitted_esti in enumerate(self.estimators_):
+                        #esti_num_small = esti_num_small+1
+                        if esti_num_small not in index_drop:
                             for i in range(y.shape[1]):
                                 former_fitted_esti_i = former_fitted_esti[i]
                                 direction = former_fitted_esti_i.predict(X if cols is None else X[:, cols])
                                 multi_factor = self.inter_results['mutiply_factor'][esti_num,i]
+                                #print(multi_factor)
                                 y_preds_some[:, i] += self.learning_rate * direction * multi_factor
+                            #print(self.inter_results['mutiply_factor'])
+                            #print(self.inter_results['mutiply_factor'][esti_num,i].shape)
                         else:
+                            #print(np.sum(self.inter_results['mutiply_factor'][:-1]))
+                            #print(self.inter_results['mutiply_factor'])
+                            #print(self.inter_results['mutiply_factor'][esti_num,i])
+                            #print(i)
+                            
                             for i in range(y.shape[1]):
+                                
                                 self.inter_results['mutiply_factor'][esti_num,i]*=factor_return
                     #                                y_preds_some[:, i] += self.learning_rate * direction
                     y_pred = y_preds_some
@@ -338,7 +364,7 @@ class BaseBoosting(abc.ABC, ensemble.BaseEnsemble):
                 if line_searcher:
                     direction = line_searcher.update(direction)
                 if cols is None:
-                    y_pred[:, i] += self.learning_rate * direction * self.inter_results['mutiply_factor'][esti_num,0]
+                    y_pred[:, i] += self.learning_rate * direction * self.inter_results['mutiply_factor'][esti_num,i]
                 else:
                     y_pred[:, i] += self.learning_rate * direction * self.inter_results['mutiply_factor'][esti_num, i]
 

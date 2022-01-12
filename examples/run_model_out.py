@@ -6,6 +6,7 @@ Created on Mon Jan 10 00:34:41 2022
 """
 
 #%% Imports
+from os.path import exists
 from sklearn import datasets
 from sklearn import metrics
 from sklearn import model_selection
@@ -161,9 +162,9 @@ def split_train_test_val(X,y, test_ratio = 0.2, val_ratio = 0, split_id = None, 
             return X_train, y_train , X_val,  y_val, X_test, y_test
 
 
-def run_model(X_fit, y_fit, X_val, y_val, type_model = 'classification', max_depth = 1, n_estimators = 50,  
+def run_model(X_fit, y_fit, X_val, y_val, type_model = 'classification', max_depth = 1, n_estimators = 150,  
               learning_rate = 0.1, early_stopping_rounds = False, col_sampling = 1,
-                is_DART = True, DART_params = {'n_drop':1, 'dist_drop': 'random' , 'min_1':True, 'weights_list' : None},
+                is_DART = True, DART_params = {'n_drop':1, 'dist_drop': 'random' , 'min_1':False, 'weights_list' : None},
                 limit_type = False,
               ):
 
@@ -172,7 +173,8 @@ def run_model(X_fit, y_fit, X_val, y_val, type_model = 'classification', max_dep
     """
     if type_model == 'classification':
         model = starboost_up.boosting.BoostingClassifier(loss=starboost_up.losses.LogLoss(),
-        base_estimator= xgb.XGBRegressor(max_depth = 1), base_estimator_is_tree=True,
+        base_estimator= xgb.XGBRegressor(max_depth = 1,  n_estimators = 1), 
+        base_estimator_is_tree=True,
         n_estimators=n_estimators,  init_estimator=starboost_up.init.LogOddsEstimator(), 
         learning_rate= learning_rate,   row_sampling=0.8,    col_sampling=col_sampling,    eval_metric=micro_f1_score,
         early_stopping_rounds=early_stopping_rounds,    random_state=42,    type_class ='classification',
@@ -181,7 +183,7 @@ def run_model(X_fit, y_fit, X_val, y_val, type_model = 'classification', max_dep
     elif type_model == 'regression':        
         model = starboost_up.boosting.BoostingRegressor(
             loss=starboost_up.losses.L2Loss(),
-            base_estimator= xgb.XGBRegressor(max_depth = 1),
+            base_estimator= xgb.XGBRegressor(max_depth = 1, n_estimators = 1),
             base_estimator_is_tree=True,
             n_estimators=n_estimators,         init_estimator=linear_model.LinearRegression(),
             learning_rate=  learning_rate,            row_sampling=0.8,
@@ -196,12 +198,24 @@ def run_model(X_fit, y_fit, X_val, y_val, type_model = 'classification', max_dep
     #
     if  type_model == 'regression':          eva = rmse(y_val, y_pred)
     else:        eva = metrics.roc_auc_score(y_val, y_pred)
-    evas = {}; inter_predictions = {}
+    evas = {}; inter_predictions = {}; evas_fit = {}
+    #X_fit_predict = model.iter_predict(X_fit)
     for ib_num, ib in enumerate(model.iter_predict(X_val)):
         inter_predictions[ib_num] = ib
-        if  type_model == 'regression':         evas[ib_num] = rmse(y_val,ib)
+        if  type_model == 'regression':         
+            evas[ib_num] = rmse(y_val,ib)
+            
         else:         evas[ib_num] = metrics.roc_auc_score(y_val,ib)
-    return model, y_pred, eva, evas, inter_predictions
+        
+    for ib_num, ib in enumerate(model.iter_predict(X_fit)):
+        inter_predictions[ib_num] = ib
+        if  type_model == 'regression':         
+            evas_fit[ib_num] = rmse(y_fit,ib)
+            
+        else:         evas_fit[ib_num] = metrics.roc_auc_score(y_fit,ib)
+
+        
+    return model, y_pred, eva, evas, inter_predictions, evas_fit
 
 
 
@@ -216,14 +230,21 @@ def run_model_x_y(X, y , test_ratio = 0.2, split_id = None, type_model = 'classi
 
 
 
-    model, y_pred, eva, evas, inter_predictions = run_model(X_fit, y_fit, X_val, y_val, type_model = type_model, max_depth = max_depth, n_estimators = n_estimators,  
+    model, y_pred, eva, evas, inter_predictions, evas_fit = run_model(X_fit, y_fit, X_val, y_val, type_model = type_model, max_depth = max_depth, n_estimators = n_estimators,  
               learning_rate = learning_rate, early_stopping_rounds =  early_stopping_rounds, col_sampling = col_sampling,
                 is_DART =  is_DART,     DART_params = DART_params)
-    return  X_fit, X_val, y_fit, y_val, model, y_pred, eva, evas, inter_predictions
+    return  X_fit, X_val, y_fit, y_val, model, y_pred, eva, evas, inter_predictions, evas_fit
 
 
 #%%
-isdart = bool(input('is dart?')    )
+    
+def str_to_bool(s):
+    if s.lower() == 'true':         return True
+    elif s.lower() == 'false':         return False
+    else:         raise ValueError('Unknown False/True string')
+    
+isdart = str_to_bool(input('is dart?')    )
+print(isdart)
 ndrop = float(input('ndrop'))
 to_update_dict = True
 to_plot = True
@@ -232,15 +253,17 @@ if isdart:
 else:
     color_plot = 'black'
 
-params = {'isdart':isdart, 'n_estimators':50, 'ndrop': ndrop,'min_1' : False, 'limit_type' : False }
+params = {'isdart':isdart, 'n_estimators':150, 'ndrop': ndrop,'min_1' : False, 'limit_type' : False }
 
 if ndrop == 1: ndrop = int(ndrop)
-X_fit, X_val, y_fit, y_val, model, y_pred, eva, evas, inter_predictions = run_model_x_y(X, y,
+X_fit, X_val, y_fit, y_val, model, y_pred, eva, evas, inter_predictions, evas_fit = run_model_x_y(X, y,
                                                                                         is_DART =isdart , n_estimators= params['n_estimators'], 
                                                                                         DART_params = {'n_drop':ndrop,'min_1':params['min_1']},
                                                                                         type_model = problem_type)
 
 
+         
+         
 real_path, whole_path = create_inner_path([params['isdart'], params['n_estimators'], params['ndrop'], params['min_1'],params['limit_type']], 
                   ['isdart', 'n_estimators', 'ndrop', 'min_1','limit_type'])
 
@@ -310,24 +333,39 @@ pickle.dump(model, open(whole_path+'/model.sav' , 'wb'))
 
 name_save = real_path.replace('/','_')[1:];            
 if to_update_dict:
-    name_cum = 'cum_dict_%s.npy'%data_type
-    load_dict = to_load_dict(name_cum)   
-    load_dict[name_save] = evas
     save_path =os.getcwd()+ '%s'%('\save_files\save_dicts\%s'%(data_type))
+    name_cum = 'cum_dict_%s.npy'%data_type
+    load_dict = to_load_dict(save_path+'\%s'%name_cum)   
+    load_dict[name_save] = evas
+    
     Path(save_path).mkdir(parents=True, exist_ok=True)
     np.save(save_path+'\%s'%name_cum, load_dict)
     print(save_path)
     
-    name_cum = 'params_dict_%s.npy'%data_type
-    load_dict = to_load_dict(name_cum)   
-    load_dict[name_save] = params
     save_path =os.getcwd()+ '%s'%('\save_files\save_dicts\%s'%(data_type))
+    name_cum = 'params_dict_%s.npy'%data_type
+    load_dict_params = to_load_dict(save_path+'\%s'%name_cum)   
+    load_dict_params[name_save] = params
+    
     Path(save_path).mkdir(parents=True, exist_ok=True)
-    np.save(save_path+'\%s'%name_cum, load_dict)
+    np.save(save_path+'\%s'%name_cum, load_dict_params)
+    
+        
+    save_path =os.getcwd()+ '%s'%('\save_files\save_dicts\%s'%(data_type))
+    name_cum = 'final_res_%s.npy'%data_type
+    load_dict_final = to_load_dict(save_path+'\%s'%name_cum)   
+    if problem_type  == 'regression':
+        load_dict_final[name_save] = rmse(y_pred,y_val)
+    else: 
+        load_dict_final[name_save] = metrics.roc_auc_score(y_pred,y_val)
+    
+    Path(save_path).mkdir(parents=True, exist_ok=True)
+    np.save(save_path+'\%s'%name_cum, load_dict_params)
 
     
 if to_plot:            
-    plt.plot(pd.DataFrame(evas,index =[name_save]).T, color = color_plot);
+    pd.DataFrame(evas,index =[data_type + '_' +name_save]).T.plot(color = color_plot)
+    #pd.DataFrame(evas_fit,index =['TRAIN' + data_type + '_' +name_save]).T.plot(color = color_plot)
     plt.xlabel('Iterations')
     plt.ylabel('AUC score')
     make_file([], whole_path, 'performance_graph.png',True, '.png')
